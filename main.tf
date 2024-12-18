@@ -82,6 +82,7 @@ resource "aws_instance" "jenkins_server" {
   # Update package lists
   sudo apt update -y
 
+  sudo hostnamectl set-hostname jenkins  
   # Install OpenJDK and required packages
   sudo apt install -y openjdk-21-jdk openjdk-21-jre
 
@@ -94,8 +95,11 @@ resource "aws_instance" "jenkins_server" {
   sudo apt install -y jenkins
   sudo systemctl start jenkins
   sudo systemctl enable jenkins
-  EOF
+EOF
 }
+
+
+
 
 # Create EC2 instance for Docker server
 resource "aws_instance" "docker_server" {
@@ -150,7 +154,7 @@ EOF
 # Create EC2 instance for SonarQube server
 resource "aws_instance" "sonarqube_server" {
   ami                         = "ami-0e2c8caa4b6378d8c"
-  instance_type               = "t2.micro"
+  instance_type               = "t3.small"
   key_name                    = "my-keypair"
   subnet_id                   = data.aws_subnet.default.id
   vpc_security_group_ids      = [aws_security_group.allow_all.id]
@@ -162,11 +166,12 @@ resource "aws_instance" "sonarqube_server" {
 
 user_data = <<-EOF
 #!/bin/bash
-set -e  # Exit on any error
-exec > >(tee /var/log/sonarqube-userdata.log) 2>&1
+set -e  # Exit on first error
+exec > >(tee /var/log/sonarqube-install.log) 2>&1
+
+echo "Starting SonarQube installation..."
 
 # Update system
-echo "Updating system packages..."
 sudo apt update -y
 
 # Install Java 17
@@ -174,34 +179,29 @@ echo "Installing Java 17..."
 sudo apt install -y openjdk-17-jdk openjdk-17-jre
 
 # Install required utilities
-echo "Installing wget and unzip..."
+echo "Installing required utilities..."
 sudo apt install -y wget unzip
 
 # Download SonarQube
 echo "Downloading SonarQube..."
-wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.0.0.68432.zip -O /tmp/sonarqube.zip
+sudo wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.0.0.68432.zip -O /tmp/sonarqube.zip
 
-# Unzip to opt directory
+# Extract and install
 echo "Extracting SonarQube..."
 sudo unzip /tmp/sonarqube.zip -d /opt
-
-# Rename and set permissions
-echo "Setting up SonarQube directory..."
-# Remove existing directory if it exists
-sudo rm -rf /opt/sonarqube
-
-# Move and rename
 sudo mv /opt/sonarqube-10.0.0.68432 /opt/sonarqube
 
-# Create user if not exists, ignore error if user already present
+# Create sonar user
+echo "Creating sonar user..."
 sudo useradd -r -s /bin/false sonar || true
 
 # Set permissions
+echo "Setting permissions..."
 sudo chown -R sonar:sonar /opt/sonarqube
 
-# Create systemd service file
-echo "Creating systemd service file..."
-sudo tee /etc/systemd/system/sonarqube.service << SONAR_SERVICE
+# Create systemd service
+echo "Creating systemd service..."
+sudo tee /etc/systemd/system/sonarqube.service << 'SONAREOF'
 [Unit]
 Description=SonarQube service
 After=syslog.target network.target
@@ -213,22 +213,28 @@ ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
 User=sonar
 Group=sonar
 Restart=always
+LimitNOFILE=65536
+LimitNPROC=4096
 
 [Install]
 WantedBy=multi-user.target
-SONAR_SERVICE
+SONAREOF
 
-# Reload systemd, enable and start SonarQube
+# Start service
 echo "Starting SonarQube service..."
 sudo systemctl daemon-reload
 sudo systemctl enable sonarqube
 sudo systemctl start sonarqube
 
-# Clean up zip file
+# Clean up
+echo "Cleaning up..."
 sudo rm /tmp/sonarqube.zip
 
-echo "SonarQube installation completed successfully!"
+echo "SonarQube installation completed!"
+echo "You can access SonarQube at http://localhost:9000"
+echo "Default credentials are admin/admin"
 EOF
+
 }
 
 # Output the public IP addresses of the instances
