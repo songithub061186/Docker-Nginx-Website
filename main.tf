@@ -1,6 +1,6 @@
 provider "aws" {
   region                   = "us-east-1"
-  shared_credentials_files = ["C:/Users/PC/.aws/credentials"]
+  shared_credentials_files = ["C:/Users/JERSON POGI/.aws/credentials"]
   profile                  = "default" # Specify the profile you want to use
 }
 
@@ -24,19 +24,13 @@ data "aws_subnet" "default" {
 
 
 resource "aws_key_pair" "keypair" {
-  key_name   = "my-keypair"                            # Choose a name for the keypair
-  public_key = file("C:/Users/PC/.ssh/my-keypair.pub") # Path to your public key
+  key_name   = "my-keypair"                                     # Choose a name for the keypair
+  public_key = file("C:/Users/JERSON POGI/.ssh/my-keypair.pub") # Path to your public key
 }
 
 output "key_pair_id" {
   value = aws_key_pair.keypair
 }
-
-# # Output the public IP of the instance
-# output "ec2_public_ip" {
-#   value       = aws_instance.jenkins_apache_server.public_ip
-#   description = "The public IP address of the EC2 instance"
-# }
 
 
 
@@ -62,41 +56,6 @@ resource "aws_security_group" "allow_all" {
   }
 }
 
-# Create EC2 instance for Jenkins server
-resource "aws_instance" "jenkins_server" {
-  ami                         = "ami-0e2c8caa4b6378d8c"
-  instance_type               = "t2.micro"
-  key_name                    = "my-keypair"
-  subnet_id                   = data.aws_subnet.default.id
-  vpc_security_group_ids      = [aws_security_group.allow_all.id]
-  associate_public_ip_address = true
-
-  tags = {
-    Name = "Jenkins-Server"
-  }
-
-  user_data = <<-EOF
-  #!/bin/bash
-  echo "start"
-
-  # Update package lists
-  sudo apt update -y
-
-  sudo hostnamectl set-hostname jenkins  
-  # Install OpenJDK and required packages
-  sudo apt install -y openjdk-21-jdk openjdk-21-jre
-
-  # Add Jenkins repository key and configure Jenkins repository
-  sudo wget -q -O /usr/share/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
-  echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-
-  # Install Jenkins
-  sudo apt update -y
-  sudo apt install -y jenkins
-  sudo systemctl start jenkins
-  sudo systemctl enable jenkins
-EOF
-}
 
 
 
@@ -114,7 +73,7 @@ resource "aws_instance" "docker_server" {
     Name = "Docker-Server"
   }
 
-   user_data = <<-EOF
+user_data = <<-EOF
 #!/bin/bash
 set -e  # Exit immediately if a command exits with a non-zero status
 exec > >(tee /var/log/docker-install.log) 2>&1
@@ -148,104 +107,53 @@ sudo systemctl enable docker
 docker --version
 
 echo "Docker installation completed successfully!"
-EOF
-}
 
-# Create EC2 instance for SonarQube server
-resource "aws_instance" "sonarqube_server" {
-  ami                         = "ami-0e2c8caa4b6378d8c"
-  instance_type               = "t3.small"
-  key_name                    = "my-keypair"
-  subnet_id                   = data.aws_subnet.default.id
-  vpc_security_group_ids      = [aws_security_group.allow_all.id]
-  associate_public_ip_address = true
+# Create a directory named docker-app and navigate into it
+mkdir docker-app && cd docker-app
 
-  tags = {
-    Name = "SonarQube-Server"
-  }
+# Create index.html with the specified content
+echo "Please Contribute to my Ryzen 7 5700x3d" > index.html
 
-user_data = <<-EOF
-#!/bin/bash
-set -e  # Exit on first error
-exec > >(tee /var/log/sonarqube-install.log) 2>&1
+# Create a Dockerfile with the specified content
+cat <<EOL > Dockerfile
+FROM nginx:latest
+COPY index.html /usr/share/nginx/html
+EOL
 
-echo "Starting SonarQube installation..."
+# Start the Docker service
+echo "Starting Docker service..."
+sudo systemctl start docker
 
-# Update system
-sudo apt update -y
+# Build the Docker image
+echo "Building the Docker image..."
+docker build -t docker-app .
 
-# Install Java 17
-echo "Installing Java 17..."
-sudo apt install -y openjdk-17-jdk openjdk-17-jre
+# Run the Docker image
+docker run -d --name hahahaha -p 80:80 docker-app
 
-# Install required utilities
-echo "Installing required utilities..."
-sudo apt install -y wget unzip
-
-# Download SonarQube
-echo "Downloading SonarQube..."
-sudo wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.0.0.68432.zip -O /tmp/sonarqube.zip
-
-# Extract and install
-echo "Extracting SonarQube..."
-sudo unzip /tmp/sonarqube.zip -d /opt
-sudo mv /opt/sonarqube-10.0.0.68432 /opt/sonarqube
-
-# Create sonar user
-echo "Creating sonar user..."
-sudo useradd -r -s /bin/false sonar || true
-
-# Set permissions
-echo "Setting permissions..."
-sudo chown -R sonar:sonar /opt/sonarqube
-
-# Create systemd service
-echo "Creating systemd service..."
-sudo tee /etc/systemd/system/sonarqube.service << 'SONAREOF'
-[Unit]
-Description=SonarQube service
-After=syslog.target network.target
-
-[Service]
-Type=forking
-ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
-ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
-User=sonar
-Group=sonar
-Restart=always
-LimitNOFILE=65536
-LimitNPROC=4096
-
-[Install]
-WantedBy=multi-user.target
-SONAREOF
-
-# Start service
-echo "Starting SonarQube service..."
-sudo systemctl daemon-reload
-sudo systemctl enable sonarqube
-sudo systemctl start sonarqube
-
-# Clean up
-echo "Cleaning up..."
-sudo rm /tmp/sonarqube.zip
-
-echo "SonarQube installation completed!"
-echo "You can access SonarQube at http://localhost:9000"
-echo "Default credentials are admin/admin"
+# Notify completion
+echo "Docker image 'docker-app' built successfully!"
 EOF
 
+  
 }
 
-# Output the public IP addresses of the instances
-output "jenkins_server_ip" {
-  value = aws_instance.jenkins_server.public_ip
-}
-
+# Output the public IP of the EC2 instance
 output "docker_server_ip" {
   value = aws_instance.docker_server.public_ip
 }
 
-output "sonarqube_server_ip" {
-  value = aws_instance.sonarqube_server.public_ip
+data "aws_route53_zone" "example" {
+  name = "jersonix.online." # Replace with your domain name
 }
+
+
+
+# Create Route 53 A Record for kyle.jersonix.online pointing to EC2 instance IP
+resource "aws_route53_record" "a_record" {
+  zone_id = data.aws_route53_zone.example.id # Replace with your Route 53 Hosted Zone ID
+  name    = "kyle.jersonix.online"
+  type    = "A"
+  ttl     = 60
+  records = [aws_instance.docker_server.public_ip]
+  }
